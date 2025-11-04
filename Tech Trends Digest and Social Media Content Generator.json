@@ -1,0 +1,368 @@
+{
+  "name": "Tech Trends Digest and Social Media Content Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "f013ad41-51a2-4a7b-b8ad-2bbab0832632",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -448,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "redditSubreddit",
+              "value": "technology",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "youtubeSearchQuery",
+              "value": "tech news",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "maxResults",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "id-4",
+              "name": "notificationEmail",
+              "value": "<__PLACEHOLDER_VALUE__Your email address__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "telegramChatId",
+              "value": "<__PLACEHOLDER_VALUE__Your Telegram chat ID__>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "d583c472-7bfb-43f8-8acc-f304e93bd875",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "subreddit": "={{ $('Workflow Configuration').first().json.redditSubreddit }}",
+        "limit": "={{ $('Workflow Configuration').first().json.maxResults }}",
+        "filters": {
+          "category": "hot"
+        }
+      },
+      "id": "96d6d702-9ec0-45f0-aee7-36126bef9951",
+      "name": "Fetch Reddit Tech Posts",
+      "type": "n8n-nodes-base.reddit",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "Q76R0ANd5g0tXIIG",
+          "name": "N8n ai"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "limit": "={{ $('Workflow Configuration').first().json.maxResults }}",
+        "filters": {
+          "q": "={{ $('Workflow Configuration').first().json.youtubeSearchQuery }}"
+        },
+        "options": {
+          "order": "date"
+        }
+      },
+      "id": "6499638b-9067-4fbe-aa64-5a77776a5506",
+      "name": "Fetch YouTube Tech Videos",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ce61eb90-4ce8-4abd-973a-71ba2e65615e",
+      "name": "Combine Reddit and YouTube Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Prepare data structure for OpenAI processing\nconst item = $input.item.json;\n\n// Determine source and extract relevant fields\nlet source, title, description, url;\n\nif (item.subreddit) {\n  // Reddit post\n  source = 'Reddit';\n  title = item.title || 'No title';\n  description = item.selftext || item.url || 'No description';\n  url = 'https://reddit.com' + item.permalink;\n} else if (item.snippet) {\n  // YouTube video\n  source = 'YouTube';\n  title = item.snippet?.title || 'No title';\n  description = item.snippet?.description || 'No description';\n  url = 'https://www.youtube.com/watch?v=' + item.id?.videoId;\n} else {\n  source = 'Unknown';\n  title = item.title || 'No title';\n  description = item.description || 'No description';\n  url = item.url || '';\n}\n\nreturn {\n  json: {\n    source,\n    title,\n    description,\n    url\n  }\n};"
+      },
+      "id": "91a80251-228f-42e9-a336-76c09fa74010",
+      "name": "Prepare Data for OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "message"
+      },
+      "id": "6a31b954-62a9-45c5-9ea8-f57f0306beb7",
+      "name": "OpenAI Summarize and Generate Posts",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        672,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Parse OpenAI response and combine with original data\nconst item = $input.item.json;\nconst preparedData = $('Prepare Data for OpenAI').item(0).json;\n\n// Parse the OpenAI response\nlet aiResponse;\ntry {\n  aiResponse = JSON.parse(item.message?.content || item.text || '{}');\n} catch (e) {\n  aiResponse = { summary: 'Error parsing response', postIdea: 'Error parsing response' };\n}\n\nreturn {\n  json: {\n    source: preparedData.source,\n    title: preparedData.title,\n    url: preparedData.url,\n    description: preparedData.description,\n    summary: aiResponse.summary || 'No summary',\n    postIdea: aiResponse.postIdea || 'No post idea',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "494ddb5c-182a-433b-a25a-428154e1b07a",
+      "name": "Parse OpenAI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Your Google Sheet ID__>"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "url"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "56429f19-d135-4c58-975d-947e19b2cd90",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1248,
+        96
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GuhGefX2SEB7ncR7",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Workflow Configuration').first().json.notificationEmail }}",
+        "subject": "=Daily Tech Trends Digest - {{ new Date().toLocaleDateString() }}",
+        "message": "=<h2>Your Daily Tech Trends Digest</h2>\n<p>Successfully processed {{ $('Parse OpenAI Response').all().length }} tech posts and saved them to Google Sheets.</p>\n<p>Check your Google Sheet for the full details!</p>\n<p><strong>Workflow executed at:</strong> {{ new Date().toLocaleString() }}</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e18baf33-0b97-47e5-92f0-cf7081c3e43c",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1472,
+        0
+      ],
+      "webhookId": "96d2c72f-b8ef-4de3-a357-a87413c561d4"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Workflow Configuration').first().json.telegramChatId }}",
+        "text": "=🤖 *Daily Tech Trends Digest*\n\n✅ Successfully processed {{ $('Parse OpenAI Response').all().length }} tech posts\n📊 Data saved to Google Sheets\n⏰ {{ new Date().toLocaleString() }}\n\nCheck your sheet for details!",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "bb11a2c5-246b-4817-b177-a24fb0eee01f",
+      "name": "Send Telegram Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1472,
+        176
+      ],
+      "webhookId": "bdceb040-e0bd-4ea0-ad98-a17dc2efd0fd"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reddit Tech Posts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch YouTube Tech Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reddit Tech Posts": {
+      "main": [
+        [
+          {
+            "node": "Combine Reddit and YouTube Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch YouTube Tech Videos": {
+      "main": [
+        [
+          {
+            "node": "Combine Reddit and YouTube Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Reddit and YouTube Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data for OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data for OpenAI": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Summarize and Generate Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Summarize and Generate Posts": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI Response": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c6ffa487-d93a-4d59-9c73-cc5cfcd4ebaa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "acd6eb2db901fdfadb821100da3a86a7fb57551a8dd1e4dfb74f4a4bf670bea6"
+  },
+  "id": "BFGAd73fTtU3njaw",
+  "tags": []
+}
