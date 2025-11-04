@@ -1,5 +1,5 @@
 # Tech-Trends-Digest-and-Social-Media-Content-Generator
-A complete automation that fetched trending post and gives content ideas.
+A complete automation that fetch trending post and gives content ideas.
 
 🔗 https://rohini2p-1.app.n8n.cloud/workflow/BFGAd73fTtU3njaw
 Workflow Summary
